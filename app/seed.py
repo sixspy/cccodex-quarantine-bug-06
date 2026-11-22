@@ -122,9 +122,21 @@ def seed_if_needed(db_path: str | None = None) -> None:
             VALUES ('system', '种子初始化', 'lab', 0, '首次启动写入样例')
             """
         )
-        try:
-            from app.services.cursor_break import seed_skew
-            seed_skew(db_path)
-        except Exception:
-            pass
+        # 甲路游标队列种子：甲源已有一个断点落点（队列头），其余源站无落点，
+        # 供“无落点即拒整页重抽”的判定覆盖两种状态。
+        from app.services.cursors import fingerprint_of
+
+        src_a = "站内目录甲"
+        seed_page = "page-01"
+        seed_item = "sku-1004"
+        seed_fp = fingerprint_of(src_a, seed_page, seed_item, "")
+        conn.execute(
+            """
+            INSERT INTO capture_cursors(
+              source_name, page_key, last_item_key, fingerprint, prev_fingerprint,
+              version, re_pull_count, blocked_dup_count, status, note
+            ) VALUES (?, ?, ?, ?, '', 1, 0, 0, '队列头', '种子断点')
+            """,
+            (src_a, seed_page, seed_item, seed_fp),
+        )
         _meta_set(conn, "seeded", "1")

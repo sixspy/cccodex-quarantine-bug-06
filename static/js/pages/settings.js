@@ -2,6 +2,8 @@ import { api } from '../api.js';
 
 export async function renderSettings(el) {
   const data = await api('/api/settings');
+  const summary = await api('/api/cursors/summary');
+  const totals = summary.totals || {};
   el.innerHTML = `
     <div class="card">
       <h2>台参数</h2>
@@ -17,6 +19,35 @@ export async function renderSettings(el) {
             </tr>`).join('')}
         </tbody>
       </table>
+    </div>
+    <div class="card">
+      <h2>游标断点口径（只读）</h2>
+      <p class="hint-box">本卡只读，断点写定入口仅在“抓取批次 → 游标断点队列”，避免双开。</p>
+      <table>
+        <tbody>
+          <tr><th>工程形态</th><td>${summary.mode}</td></tr>
+          <tr><th>唯一读引用</th><td>${summary.read_ref}</td></tr>
+          <tr><th>断点芯片口径</th><td>有队列头落点行 → ${summary.chip_ok}；无落点行 → ${summary.chip_bad}（芯片不允许脱离落点行单独亮）</td></tr>
+          <tr><th>重抽次数口径</th><td>仅“按断点重抽”成功单 +1；无落点/指纹偏/页键不符一律拒绝且不计数</td></tr>
+          <tr><th>指纹口径</th><td>sha256(源站|页键|末条目键|前指纹)；推进必须携带当前队列头指纹，不符即拒</td></tr>
+          <tr><th>串行口径</th><td>同源站断点经 cursor_locks 串行 + 队列头唯一索引兜底，争抢时后者整体回滚</td></tr>
+          <tr><th>汇总量</th><td>源站 ${totals.sources} · 有落点 ${totals.landed} · 无落点 ${totals.headless} · 重抽 ${totals.re_pull_count} · 拦截重复 ${totals.blocked_dup_count} · 归档钉点 ${totals.archived_heads}</td></tr>
+        </tbody>
+      </table>
+      <table style="margin-top:10px">
+        <thead><tr><th>源站</th><th>芯片</th><th>落点页键</th><th>指纹</th><th>重抽次数</th><th>拦截重复</th></tr></thead>
+        <tbody>
+          ${(summary.sources || []).map((s) => `
+            <tr>
+              <td>${s.source_name}</td>
+              <td><span class="${s.has_landing ? 'chip ok' : 'chip bad'}">${s.chip}</span></td>
+              <td>${s.page_key || '无落点行'}</td>
+              <td class="muted">${s.fingerprint_short ? s.fingerprint_short + '…' : '—'}</td>
+              <td>${s.re_pull_count}</td>
+              <td>${s.blocked_dup_count}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
     </div>`;
   el.querySelectorAll('[data-save]').forEach((btn) => {
     btn.onclick = async () => {
@@ -28,40 +59,4 @@ export async function renderSettings(el) {
       await renderSettings(el);
     };
   });
-
-  try {
-    const dash = await api('/api/cursor_break/dash');
-    el.innerHTML += `<div class="card" style="margin-top:1rem">
-      <h3>游标断点</h3>
-      <span class="chip">${dash.chip}</span>
-      <p class="muted">读轨 ${dash.active_read} · 切流指纹 ${dash.cutover_fp || '空'} · 拒回刷 ${dash.reject_refresh} · 归档 ${dash.archive_count} · 新旗 ${dash.live_flag || '空'} · 对齐差 ${dash.panel_pack_mismatch}</p>
-      <div class="row">
-        <button id="go_cursor_break" type="button">落台</button>
-        <button id="half_cursor_break" type="button">半修对齐</button>
-        <button id="cut_cursor_break" type="button">切流账册</button>
-        <button id="dual_cursor_break" type="button">双写两轨</button>
-      </div>
-    </div>`;
-    const go = el.querySelector('#go_cursor_break');
-    if (go) go.onclick = async () => {
-      await api('/api/cursor_break/commit', { method:'POST', body: JSON.stringify({ref:1}) });
-      await renderSettings(el);
-    };
-    const half = el.querySelector('#half_cursor_break');
-    if (half) half.onclick = async () => {
-      await api('/api/cursor_break/half', { method:'POST', body:'{}' });
-      await renderSettings(el);
-    };
-    const cut = el.querySelector('#cut_cursor_break');
-    if (cut) cut.onclick = async () => {
-      await api('/api/cursor_break/cutover', { method:'POST', body: JSON.stringify({ref_id:1, note:'游标断点'}) });
-      await renderSettings(el);
-    };
-    const dual = el.querySelector('#dual_cursor_break');
-    if (dual) dual.onclick = async () => {
-      await api('/api/cursor_break/dual', { method:'POST', body: JSON.stringify({note:'游标断点'}) });
-      await renderSettings(el);
-    };
-  } catch (e) { /* optional surface */ }
-
 }

@@ -18,9 +18,7 @@ from app.services import reconcile as reconcile_svc
 from app.services import review as review_svc
 from app.services import rework as rework_svc
 from app.services import settings as settings_svc
-from app.services import cursor_break as cursor_break_svc
-from app.services import cursor_break_cutover as cursor_break_cutover_svc
-from app.services import cursor_break_dualwrite as cursor_break_dual_svc
+from app.services import cursors as cursors_svc
 from app.services import sources as sources_svc
 from app.services.errors import ServiceError
 
@@ -309,37 +307,36 @@ def create_app():
             return _json(policies_svc.apply_to_batch(int(body.get("batch_id") or 0)))
 
 
-        def cursor_break_dash(request):
+        # 甲路游标队列：唯一读轨 = 各源站队列头
+        def cursor_summary(request):
             _require(request)
-            return _json(cursor_break_cutover_svc.board())
+            return _json(cursors_svc.cursor_summary())
 
-        def cursor_break_commit(request):
-            _require(request)
-            body = _read_json(request)
-            return _json(cursor_break_svc.commit_action(body))
-
-        def cursor_break_half(request):
-            _require(request)
-            return _json(cursor_break_svc.reconcile_display())
-
-        def cursor_break_snap(request):
-            _require(request)
-            return _json(cursor_break_svc.snapshot())
-
-        def cursor_break_cutover(request):
+        def cursor_commit(request):
             _require(request)
             body = _read_json(request)
             return _json(
-                cursor_break_cutover_svc.append_cutover(
-                    int(body.get("ref_id") or 0),
-                    str(body.get("note") or "游标断点"),
+                cursors_svc.commit_checkpoint(
+                    str(body.get("source_name", "")),
+                    str(body.get("page_key", "")),
+                    str(body.get("last_item_key", "")),
+                    str(body.get("expect_fingerprint", "")),
+                    str(body.get("note", "")),
                 )
             )
 
-        def cursor_break_dual(request):
+        def cursor_repull(request):
             _require(request)
             body = _read_json(request)
-            return _json(cursor_break_dual_svc.apply_dualwrite(str(body.get("note") or "游标断点")))
+            return _json(
+                cursors_svc.re_pull_page(
+                    str(body.get("source_name", "")),
+                    str(body.get("page_key", "")),
+                    str(body.get("fingerprint", "")),
+                    int(body.get("batch_id") or 0),
+                    body.get("items") or [],
+                )
+            )
 
         def audits_list(request):
             _require(request)
@@ -379,12 +376,9 @@ def create_app():
         config.add_route("rule_enable", "/api/rules/{id}/enable")
         config.add_route("rule_apply", "/api/rules/apply")
         config.add_route("audits", "/api/audits")
-        config.add_route("cursor_break_dash", "/api/cursor_break/dash")
-        config.add_route("cursor_break_commit", "/api/cursor_break/commit")
-        config.add_route("cursor_break_half", "/api/cursor_break/half")
-        config.add_route("cursor_break_snap", "/api/cursor_break/snap")
-        config.add_route("cursor_break_cutover", "/api/cursor_break/cutover")
-        config.add_route("cursor_break_dual", "/api/cursor_break/dual")
+        config.add_route("cursor_summary", "/api/cursors/summary")
+        config.add_route("cursor_commit", "/api/cursors/commit")
+        config.add_route("cursor_repull", "/api/cursors/repull")
 
 
         config.add_view(root, route_name="root")
@@ -423,12 +417,9 @@ def create_app():
         config.add_view(wrap(rule_enable), route_name="rule_enable", request_method="POST")
         config.add_view(wrap(rule_apply), route_name="rule_apply", request_method="POST")
         config.add_view(wrap(audits_list), route_name="audits", request_method="GET")
-        config.add_view(wrap(cursor_break_dash), route_name="cursor_break_dash", request_method="GET")
-        config.add_view(wrap(cursor_break_commit), route_name="cursor_break_commit", request_method="POST")
-        config.add_view(wrap(cursor_break_half), route_name="cursor_break_half", request_method="POST")
-        config.add_view(wrap(cursor_break_snap), route_name="cursor_break_snap", request_method="GET")
-        config.add_view(wrap(cursor_break_cutover), route_name="cursor_break_cutover", request_method="POST")
-        config.add_view(wrap(cursor_break_dual), route_name="cursor_break_dual", request_method="POST")
+        config.add_view(wrap(cursor_summary), route_name="cursor_summary", request_method="GET")
+        config.add_view(wrap(cursor_commit), route_name="cursor_commit", request_method="POST")
+        config.add_view(wrap(cursor_repull), route_name="cursor_repull", request_method="POST")
 
 
         return config.make_wsgi_app()

@@ -61,7 +61,7 @@ def run_reconcile(db_path: str | None = None) -> dict:
 
 
 def dashboard(db_path: str | None = None) -> dict:
-    from app.services.cursor_break_audit import audit_summary as _cursor_break_audit
+    from app.services.cursors import cursor_summary
     with get_db(db_path) as conn:
         return {
             "batches": conn.execute("SELECT COUNT(*) AS c FROM capture_batches").fetchone()["c"],
@@ -81,5 +81,5 @@ def dashboard(db_path: str | None = None) -> dict:
                 "SELECT COUNT(*) AS c FROM policy_rules WHERE enabled=1"
             ).fetchone()["c"],
             "audits": conn.execute("SELECT COUNT(*) AS c FROM audit_events").fetchone()["c"],
-            "cursor_break_audit": _cursor_break_audit(db_path),
+            "cursor_summary": cursor_summary(db_path),
         }

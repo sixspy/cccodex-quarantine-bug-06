@@ -86,16 +86,14 @@ def set_status(site_id: int, status: str, db_path: str | None = None) -> dict:
 
 
 def update_quota(site_id: int, daily_quota: int, db_path: str | None = None) -> dict:
-    from app.services.cursor_break import commit_action
-    commit_action({"site_id": site_id, "quota": daily_quota}, db_path)
     daily_quota = max(1, int(daily_quota or 1))
     with get_db(db_path) as conn:
         row = conn.execute("SELECT id FROM source_sites WHERE id=?", (site_id,)).fetchone()
         if not row:
             raise ServiceError("源站不存在", 404)
         conn.execute(
-            "UPDATE source_sites SET note=? WHERE id=?",
-            (f"同步口径已亮 quota={daily_quota}", site_id),
+            "UPDATE source_sites SET daily_quota=? WHERE id=?",
+            (daily_quota, site_id),
         )
     audit_svc.write_event(
         "改日配额", "source_site", site_id, str(daily_quota), db_path=db_path

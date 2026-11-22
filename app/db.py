@@ -127,6 +127,33 @@ CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- 甲路：独立游标队列。每个源站至多一个“队列头”，即断点钉点落点行。
+CREATE TABLE IF NOT EXISTS capture_cursors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_name TEXT NOT NULL,
+  page_key TEXT NOT NULL,
+  last_item_key TEXT NOT NULL DEFAULT '',
+  fingerprint TEXT NOT NULL,
+  prev_fingerprint TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1,
+  re_pull_count INTEGER NOT NULL DEFAULT 0,
+  blocked_dup_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL CHECK (status IN ('队列头','已归档')) DEFAULT '队列头',
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 同源站队列头唯一：并发争抢时数据库层直接拒绝第二个钉点，防双写覆盖。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cursor_head_per_source
+  ON capture_cursors(source_name) WHERE status='队列头';
+
+-- 源站级串行锁：断点提交在单事务内先抢锁再写钉点，失败整体回滚。
+CREATE TABLE IF NOT EXISTS cursor_locks (
+  source_name TEXT PRIMARY KEY,
+  holder TEXT NOT NULL DEFAULT '',
+  locked_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 

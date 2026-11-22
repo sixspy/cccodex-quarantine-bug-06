@@ -6,6 +6,9 @@ from app.services.errors import ServiceError
 
 
 def list_batches(db_path: str | None = None) -> list[dict]:
+    from app.services.cursors import head_map
+
+    heads = head_map(db_path)
     with get_db(db_path) as conn:
         rows = conn.execute(
             """
@@ -13,7 +16,13 @@ def list_batches(db_path: str | None = None) -> list[dict]:
             FROM capture_batches ORDER BY id DESC
             """
         ).fetchall()
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            row = dict(r)
+            # 抓取列表的游标引用唯一取队列头；无落点行则亮坏芯片。
+            row["cursor"] = heads.get(row["source_name"], {})
+            out.append(row)
+        return out
 
 
 def get_batch(batch_id: int, db_path: str | None = None) -> dict:
